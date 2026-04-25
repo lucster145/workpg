@@ -16,6 +16,5 @@ Then open the shown local URL in your browser.
 
 ## Controls
 
-- `W A S D`: move
-- `Arrow Left/Right`: change look direction
-- `Arrow Up/Down`: zoom in/out
+- `Arrow Up/Down`: move forward/backward
+- `Arrow Left/Right`: turn left/right
