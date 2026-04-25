@@ -477,6 +477,39 @@ function update(dt) {
 
   if (vx !== 0 || vy !== 0) {
     const len = Math.hypot(vx, vy);
+    const stepX = (vx / len) * MOVE_SPEED * dt;
+    const stepY = (vy / len) * MOVE_SPEED * dt;
+
+    if (canStand(player.x + stepX, player.y)) {
+      player.x += stepX;
+    }
+    if (canStand(player.x, player.y + stepY)) {
+      player.y += stepY;
+    }
+  }
+
+  // Update AI characters
+  for (const ai of aiCharacters) {
+    ai.update(dt);
+  }
+
+  // Check interaction with interactive characters
+  selectedCharacter = null;
+  for (const npc of interactiveCharacters) {
+    const dist = npc.getDistance(player.x, player.y);
+    if (dist < 1.5) {
+      selectedCharacter = npc;
+      interactionText = `Talk to ${npc.name}: "${npc.message}"`;
+      break;
+    }
+  }
+}
+
+function render() {
+  const tileSize = Math.max(20, Math.min(120, 78 * zoom));
+  drawFloor(tileSize);
+  drawWorld(tileSize);
+  drawRoomLabels(tileSize);
   
   // Draw interactive characters
   for (const npc of interactiveCharacters) {
@@ -498,24 +531,7 @@ function update(dt) {
     ctx.font = `16px Trebuchet MS`;
     ctx.textAlign = "left";
     ctx.fillText(interactionText, 20, canvas.height - 20);
-  } len) * MOVE_SPEED * dt;
-    const stepY = (vy / len) * MOVE_SPEED * dt;
-
-    if (canStand(player.x + stepX, player.y)) {
-      player.x += stepX;
-    }
-    if (canStand(player.x, player.y + stepY)) {
-      player.y += stepY;
-    }
   }
-}
-
-function render() {
-  const tileSize = Math.max(20, Math.min(120, 78 * zoom));
-  drawFloor(tileSize);
-  drawWorld(tileSize);
-  drawRoomLabels(tileSize);
-  drawPlayer(tileSize);
 }
 
 window.addEventListener("keydown", (event) => {
