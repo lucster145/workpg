@@ -1,5 +1,28 @@
 const canvas = document.getElementById("scene");
-const ctx = canvas.getContext("2d", { alpha: false });
+const hudHint = document.querySelector("#hud .hint");
+
+function showRuntimeError(message) {
+  if (hudHint) {
+    hudHint.textContent = `Error: ${message}`;
+    hudHint.style.color = "#a31919";
+  }
+}
+
+if (!canvas) {
+  throw new Error("Canvas element not found");
+}
+
+let ctx = canvas.getContext("2d", { alpha: false });
+if (!ctx) {
+  ctx = canvas.getContext("2d");
+}
+if (!ctx) {
+  throw new Error("2D canvas context is not supported in this browser");
+}
+
+window.addEventListener("error", (event) => {
+  showRuntimeError(event.message || "Unexpected runtime error");
+});
 
 const WORLD_W = 14;
 const WORLD_H = 40;
@@ -49,10 +72,6 @@ for (let roomIndex = 0; roomIndex < ROOM_COUNT; roomIndex += 1) {
 }
 
 const input = {
-  KeyW: false,
-  KeyA: false,
-  KeyS: false,
-  KeyD: false,
   ArrowLeft: false,
   ArrowRight: false,
   ArrowUp: false,
@@ -67,9 +86,8 @@ const player = {
 
 const MOVE_SPEED = 3.5;
 const TURN_SPEED = 2.2;
-const ZOOM_SPEED = 1.1;
 const PLAYER_RADIUS = 0.2;
-let zoom = 1;
+const zoom = 1.05;
 
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -99,17 +117,100 @@ function canStand(x, y) {
   return points.every(([px, py]) => !isBlocked(px, py));
 }
 
-function artPalette(type) {
+function seeded(seed) {
+  const s = Math.sin(seed * 127.1) * 43758.5453123;
+  return s - Math.floor(s);
+}
+
+const artCache = new Map();
+
+function buildArtTexture(type, variant) {
+  const art = document.createElement("canvas");
+  art.width = 120;
+  art.height = 120;
+  const a = art.getContext("2d");
+
+  const base = a.createLinearGradient(0, 0, art.width, art.height);
+  base.addColorStop(0, "#fffef7");
+  base.addColorStop(1, "#f5f0da");
+  a.fillStyle = base;
+  a.fillRect(0, 0, art.width, art.height);
+
   if (type === 2) {
-    return ["#ff5e68", "#ffb14d", "#ffe872", "#6edfa6", "#65c5ff", "#8f91ff"];
+    const cx = 60;
+    const cy = 62;
+    for (let i = 0; i < 11; i += 1) {
+      const angle = (Math.PI * 2 * i) / 11 + variant * 0.2;
+      const r = 28 + i * 1.5;
+      a.strokeStyle = `hsl(${(i * 35 + variant * 17) % 360} 85% 62%)`;
+      a.lineWidth = 4;
+      a.beginPath();
+      a.arc(cx + Math.cos(angle) * 5, cy + Math.sin(angle) * 5, r, angle - 0.9, angle + 0.9);
+      a.stroke();
+    }
+    a.fillStyle = "#ffdd67";
+    a.beginPath();
+    a.arc(cx, cy, 11, 0, Math.PI * 2);
+    a.fill();
+  } else if (type === 3) {
+    const sky = a.createLinearGradient(0, 0, 0, 75);
+    sky.addColorStop(0, "#9fd7ff");
+    sky.addColorStop(1, "#f5fdff");
+    a.fillStyle = sky;
+    a.fillRect(8, 8, 104, 70);
+
+    a.fillStyle = "#6ecb83";
+    a.beginPath();
+    a.moveTo(8, 78);
+    for (let x = 8; x <= 112; x += 6) {
+      const h = 62 + Math.sin(x * 0.08 + variant) * 9;
+      a.lineTo(x, h);
+    }
+    a.lineTo(112, 112);
+    a.lineTo(8, 112);
+    a.closePath();
+    a.fill();
+
+    for (let i = 0; i < 6; i += 1) {
+      const x = 20 + i * 16;
+      const y = 86 + Math.sin(i + variant) * 5;
+      a.fillStyle = i % 2 ? "#ff9aa2" : "#8fd3ff";
+      a.beginPath();
+      a.arc(x, y, 6.5, 0, Math.PI * 2);
+      a.fill();
+      a.fillStyle = "#2f4f68";
+      a.fillRect(x - 1, y + 6, 2, 8);
+    }
+  } else {
+    for (let i = 0; i < 16; i += 1) {
+      const r = seeded(i + variant * 13);
+      const x = 10 + r * 100;
+      const y = 10 + seeded(i * 7 + variant) * 100;
+      const w = 12 + seeded(i * 11 + variant) * 24;
+      const h = 8 + seeded(i * 5 + variant) * 22;
+      a.fillStyle = `hsl(${(140 + i * 29 + variant * 31) % 360} 75% 70%)`;
+      a.fillRect(x, y, w, h);
+    }
+    a.strokeStyle = "#30465f";
+    a.lineWidth = 2;
+    a.beginPath();
+    a.moveTo(14, 96);
+    a.lineTo(106, 24);
+    a.stroke();
   }
-  if (type === 3) {
-    return ["#ff7eb6", "#80d4ff", "#ffd980"];
+
+  a.strokeStyle = "#9d6f39";
+  a.lineWidth = 6;
+  a.strokeRect(5, 5, 110, 110);
+  return art;
+}
+
+function getArtTexture(type, variant) {
+  const key = `${type}-${variant}`;
+  if (!artCache.has(key)) {
+    artCache.set(key, buildArtTexture(type, variant));
   }
-  if (type === 4) {
-    return ["#8ff0c2", "#ffd36b", "#98bbff"];
-  }
-  return ["#eef6ff"];
+  return artCache.get(key);
 }
 
 function worldToScreen(wx, wy, tileSize) {
@@ -161,12 +262,9 @@ function drawWorld(tileSize) {
 
       if (type > 1) {
         const pad = tileSize * 0.18;
-        const colors = artPalette(type);
-        const stripeW = (tileSize - pad * 2) / colors.length;
-        for (let i = 0; i < colors.length; i += 1) {
-          ctx.fillStyle = colors[i];
-          ctx.fillRect(sx + pad + stripeW * i, sy + pad, stripeW, tileSize - pad * 2);
-        }
+        const variant = ((x * 37 + y * 17) % 8 + 8) % 8;
+        const tex = getArtTexture(type, variant);
+        ctx.drawImage(tex, sx + pad, sy + pad, tileSize - pad * 2, tileSize - pad * 2);
         ctx.strokeStyle = "#8f6734";
         ctx.lineWidth = Math.max(1, tileSize * 0.04);
         ctx.strokeRect(sx + pad, sy + pad, tileSize - pad * 2, tileSize - pad * 2);
@@ -220,38 +318,20 @@ function update(dt) {
   if (input.ArrowRight) {
     player.lookAngle += TURN_SPEED * dt;
   }
-  if (input.ArrowUp) {
-    zoom += ZOOM_SPEED * dt;
-  }
-  if (input.ArrowDown) {
-    zoom -= ZOOM_SPEED * dt;
-  }
-
-  zoom = Math.max(0.75, Math.min(1.8, zoom));
 
   const forwardX = Math.cos(player.lookAngle);
   const forwardY = Math.sin(player.lookAngle);
-  const rightX = Math.cos(player.lookAngle + Math.PI / 2);
-  const rightY = Math.sin(player.lookAngle + Math.PI / 2);
 
   let vx = 0;
   let vy = 0;
 
-  if (input.KeyW) {
+  if (input.ArrowUp) {
     vx += forwardX;
     vy += forwardY;
   }
-  if (input.KeyS) {
+  if (input.ArrowDown) {
     vx -= forwardX;
     vy -= forwardY;
-  }
-  if (input.KeyA) {
-    vx -= rightX;
-    vy -= rightY;
-  }
-  if (input.KeyD) {
-    vx += rightX;
-    vy += rightY;
   }
 
   if (vx !== 0 || vy !== 0) {
@@ -292,15 +372,23 @@ window.addEventListener("keyup", (event) => {
 
 window.addEventListener("resize", resize);
 
-resize();
+function startGame() {
+  resize();
 
-let last = performance.now();
-function tick(now) {
-  const dt = Math.min(0.033, (now - last) / 1000);
-  last = now;
-  update(dt);
-  render();
+  let last = performance.now();
+  function tick(now) {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+    update(dt);
+    render();
+    requestAnimationFrame(tick);
+  }
+
   requestAnimationFrame(tick);
 }
 
-requestAnimationFrame(tick);
+try {
+  startGame();
+} catch (error) {
+  showRuntimeError(error instanceof Error ? error.message : "Game failed to start");
+}
