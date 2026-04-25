@@ -10,7 +10,7 @@ const DOOR_END = 8;
 
 const world = Array.from({ length: WORLD_H }, () => Array(WORLD_W).fill(0));
 
-function putWall(x, y, type = 1) {
+function putTile(x, y, type = 1) {
   if (x >= 0 && x < WORLD_W && y >= 0 && y < WORLD_H) {
     world[y][x] = type;
   }
@@ -19,36 +19,33 @@ function putWall(x, y, type = 1) {
 for (let y = 0; y < WORLD_H; y += 1) {
   for (let x = 0; x < WORLD_W; x += 1) {
     if (x === 0 || x === WORLD_W - 1 || y === 0 || y === WORLD_H - 1) {
-      putWall(x, y, 1);
+      putTile(x, y, 1);
     }
   }
 }
 
-for (let r = 1; r < ROOM_COUNT; r += 1) {
-  const wallY = r * ROOM_DEPTH;
+for (let roomIndex = 1; roomIndex < ROOM_COUNT; roomIndex += 1) {
+  const dividerY = roomIndex * ROOM_DEPTH;
   for (let x = 1; x < WORLD_W - 1; x += 1) {
     if (x < DOOR_START || x >= DOOR_END) {
-      putWall(x, wallY, 1);
+      putTile(x, dividerY, 1);
     }
   }
 }
 
-function placeArtOnVerticalWall(x, yStart, yEnd, startType) {
-  for (let y = yStart; y <= yEnd; y += 1) {
-    putWall(x, y, startType + (y % 3));
+for (let roomIndex = 0; roomIndex < ROOM_COUNT; roomIndex += 1) {
+  const startY = roomIndex * ROOM_DEPTH + 1;
+  const endY = (roomIndex + 1) * ROOM_DEPTH - 1;
+
+  for (let y = startY; y <= endY; y += 2) {
+    putTile(0, y, 2 + (y % 3));
+    putTile(WORLD_W - 1, y, 2 + ((y + 1) % 3));
   }
-}
 
-for (let r = 0; r < ROOM_COUNT; r += 1) {
-  const y0 = r * ROOM_DEPTH + 1;
-  const y1 = (r + 1) * ROOM_DEPTH - 1;
-  placeArtOnVerticalWall(0, y0, y1, 2);
-  placeArtOnVerticalWall(WORLD_W - 1, y0, y1, 2);
-}
-
-for (let x = 2; x < WORLD_W - 2; x += 2) {
-  putWall(x, 0, 2 + (x % 3));
-  putWall(x, WORLD_H - 1, 2 + ((x + 1) % 3));
+  for (let x = 2; x < WORLD_W - 2; x += 3) {
+    putTile(x, startY, 2 + ((x + roomIndex) % 3));
+    putTile(x + 1, endY, 2 + ((x + roomIndex + 1) % 3));
+  }
 }
 
 const input = {
@@ -64,266 +61,219 @@ const input = {
 
 const player = {
   x: 6.5,
-  y: WORLD_H - 3.5,
-  dir: -Math.PI / 2,
-  look: 0,
+  y: WORLD_H - 3.3,
+  lookAngle: -Math.PI / 2,
 };
 
-const MOVE_SPEED = 3.6;
-const TURN_SPEED = 1.8;
-const LOOK_SPEED = 380;
-const FOV = Math.PI / 3;
-const MAX_DIST = 30;
+const MOVE_SPEED = 3.5;
+const TURN_SPEED = 2.2;
+const ZOOM_SPEED = 1.1;
+const PLAYER_RADIUS = 0.2;
+let zoom = 1;
 
 function resize() {
-  const ratio = Math.min(window.devicePixelRatio || 1, 1.75);
-  canvas.width = Math.floor(window.innerWidth * ratio);
-  canvas.height = Math.floor(window.innerHeight * ratio);
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.floor(window.innerWidth * dpr);
+  canvas.height = Math.floor(window.innerHeight * dpr);
   canvas.style.width = `${window.innerWidth}px`;
   canvas.style.height = `${window.innerHeight}px`;
 }
 
-function isWall(x, y) {
+function isBlocked(x, y) {
   const cx = Math.floor(x);
   const cy = Math.floor(y);
-  if (cy < 0 || cy >= WORLD_H || cx < 0 || cx >= WORLD_W) {
+  if (cx < 0 || cx >= WORLD_W || cy < 0 || cy >= WORLD_H) {
     return true;
   }
   return world[cy][cx] !== 0;
 }
 
-function wallTypeAt(x, y) {
-  const cx = Math.floor(x);
-  const cy = Math.floor(y);
-  if (cy < 0 || cy >= WORLD_H || cx < 0 || cx >= WORLD_W) {
-    return 1;
-  }
-  return world[cy][cx] || 1;
+function canStand(x, y) {
+  const points = [
+    [x - PLAYER_RADIUS, y],
+    [x + PLAYER_RADIUS, y],
+    [x, y - PLAYER_RADIUS],
+    [x, y + PLAYER_RADIUS],
+  ];
+
+  return points.every(([px, py]) => !isBlocked(px, py));
 }
 
-function artColor(type, stripe) {
+function artPalette(type) {
   if (type === 2) {
-    const rainbow = ["#ff6464", "#ffaa4f", "#ffe873", "#6ddf92", "#61c9ff", "#8f92ff"];
-    return rainbow[stripe % rainbow.length];
+    return ["#ff5e68", "#ffb14d", "#ffe872", "#6edfa6", "#65c5ff", "#8f91ff"];
   }
   if (type === 3) {
-    return stripe % 2 === 0 ? "#ff8fc7" : "#84d7ff";
+    return ["#ff7eb6", "#80d4ff", "#ffd980"];
   }
   if (type === 4) {
-    return stripe % 3 === 0 ? "#ffd86d" : "#86f1b6";
+    return ["#8ff0c2", "#ffd36b", "#98bbff"];
   }
-  return "#f4f9ff";
+  return ["#eef6ff"];
 }
 
-function drawBackground(horizon) {
-  const sky = ctx.createLinearGradient(0, 0, 0, horizon);
-  sky.addColorStop(0, "#95d9ff");
-  sky.addColorStop(1, "#e8f9ff");
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, canvas.width, horizon);
-
-  const floor = ctx.createLinearGradient(0, horizon, 0, canvas.height);
-  floor.addColorStop(0, "#f5e9c6");
-  floor.addColorStop(1, "#dcbf88");
-  ctx.fillStyle = floor;
-  ctx.fillRect(0, horizon, canvas.width, canvas.height - horizon);
-
-  for (let y = Math.max(horizon, 0); y < canvas.height; y += 3) {
-    const t = (y - horizon) / Math.max(1, canvas.height - horizon);
-    const depthShade = 1 - Math.min(0.58, t * 0.75);
-    const c = Math.floor(229 * depthShade);
-    ctx.strokeStyle = `rgb(${c}, ${Math.floor(c * 0.93)}, ${Math.floor(c * 0.75)})`;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(canvas.width, y);
-    ctx.stroke();
-  }
-}
-
-function castRay(rayAngle) {
-  const rayDirX = Math.cos(rayAngle);
-  const rayDirY = Math.sin(rayAngle);
-
-  let mapX = Math.floor(player.x);
-  let mapY = Math.floor(player.y);
-
-  const deltaDistX = Math.abs(1 / (rayDirX || 0.00001));
-  const deltaDistY = Math.abs(1 / (rayDirY || 0.00001));
-
-  let stepX = 0;
-  let stepY = 0;
-  let sideDistX = 0;
-  let sideDistY = 0;
-
-  if (rayDirX < 0) {
-    stepX = -1;
-    sideDistX = (player.x - mapX) * deltaDistX;
-  } else {
-    stepX = 1;
-    sideDistX = (mapX + 1 - player.x) * deltaDistX;
-  }
-
-  if (rayDirY < 0) {
-    stepY = -1;
-    sideDistY = (player.y - mapY) * deltaDistY;
-  } else {
-    stepY = 1;
-    sideDistY = (mapY + 1 - player.y) * deltaDistY;
-  }
-
-  let hit = false;
-  let side = 0;
-  let type = 1;
-
-  while (!hit) {
-    if (sideDistX < sideDistY) {
-      sideDistX += deltaDistX;
-      mapX += stepX;
-      side = 0;
-    } else {
-      sideDistY += deltaDistY;
-      mapY += stepY;
-      side = 1;
-    }
-
-    if (mapX < 0 || mapX >= WORLD_W || mapY < 0 || mapY >= WORLD_H) {
-      hit = true;
-      type = 1;
-    } else if (world[mapY][mapX] > 0) {
-      hit = true;
-      type = world[mapY][mapX];
-    }
-  }
-
-  const perpDist = side === 0
-    ? (mapX - player.x + (1 - stepX) / 2) / (rayDirX || 0.00001)
-    : (mapY - player.y + (1 - stepY) / 2) / (rayDirY || 0.00001);
-
-  const hitPoint = side === 0
-    ? player.y + perpDist * rayDirY
-    : player.x + perpDist * rayDirX;
-
-  const wallU = hitPoint - Math.floor(hitPoint);
-
+function worldToScreen(wx, wy, tileSize) {
   return {
-    distance: Math.max(0.0001, perpDist),
-    side,
-    type,
-    wallU,
+    x: (wx - player.x) * tileSize + canvas.width / 2,
+    y: (wy - player.y) * tileSize + canvas.height / 2,
   };
 }
 
-function drawSlice(x, startY, endY, ray) {
-  const sliceH = endY - startY + 1;
-  const clampedStart = Math.max(0, startY);
-  const clampedEnd = Math.min(canvas.height - 1, endY);
-  if (clampedEnd <= clampedStart) {
-    return;
-  }
+function drawFloor(tileSize) {
+  const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  grad.addColorStop(0, "#ebf8ff");
+  grad.addColorStop(1, "#d7f0ff");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const distFade = Math.max(0.2, 1 - ray.distance / MAX_DIST);
-  for (let y = clampedStart; y <= clampedEnd; y += 1) {
-    const yT = (y - startY) / Math.max(1, sliceH);
-    const stripe = Math.floor(ray.wallU * 8 + yT * 7);
-    let base = artColor(ray.type, stripe);
+  const startX = Math.floor(player.x - canvas.width / tileSize / 2) - 1;
+  const endX = Math.ceil(player.x + canvas.width / tileSize / 2) + 1;
+  const startY = Math.floor(player.y - canvas.height / tileSize / 2) - 1;
+  const endY = Math.ceil(player.y + canvas.height / tileSize / 2) + 1;
 
-    if (ray.type === 1) {
-      base = stripe % 2 === 0 ? "#f8fbff" : "#e7f1fa";
+  for (let y = startY; y <= endY; y += 1) {
+    for (let x = startX; x <= endX; x += 1) {
+      const { x: sx, y: sy } = worldToScreen(x, y, tileSize);
+      ctx.fillStyle = (x + y) % 2 === 0 ? "#f8efd1" : "#f5e7c0";
+      ctx.fillRect(sx, sy, tileSize + 1, tileSize + 1);
     }
-
-    const shade = ray.side === 1 ? 0.86 : 1;
-    const finalShade = shade * distFade;
-
-    const rgb = base.match(/[\da-f]{2}/gi);
-    const r = parseInt(rgb[0], 16);
-    const g = parseInt(rgb[1], 16);
-    const b = parseInt(rgb[2], 16);
-    ctx.fillStyle = `rgb(${Math.floor(r * finalShade)}, ${Math.floor(g * finalShade)}, ${Math.floor(b * finalShade)})`;
-    ctx.fillRect(x, y, 1, 1);
   }
+}
 
-  if (ray.type > 1) {
-    const frameTop = clampedStart + Math.floor((clampedEnd - clampedStart) * 0.13);
-    const frameBottom = clampedStart + Math.floor((clampedEnd - clampedStart) * 0.87);
-    ctx.fillStyle = "#8f6734";
-    ctx.fillRect(x, frameTop, 1, 2);
-    ctx.fillRect(x, frameBottom - 2, 1, 2);
+function drawWorld(tileSize) {
+  for (let y = 0; y < WORLD_H; y += 1) {
+    for (let x = 0; x < WORLD_W; x += 1) {
+      const type = world[y][x];
+      if (type === 0) {
+        continue;
+      }
+
+      const { x: sx, y: sy } = worldToScreen(x, y, tileSize);
+      if (sx > canvas.width || sy > canvas.height || sx + tileSize < 0 || sy + tileSize < 0) {
+        continue;
+      }
+
+      ctx.fillStyle = "#f8fbff";
+      ctx.fillRect(sx, sy, tileSize, tileSize);
+      ctx.strokeStyle = "#bfd6ea";
+      ctx.lineWidth = Math.max(1, tileSize * 0.05);
+      ctx.strokeRect(sx, sy, tileSize, tileSize);
+
+      if (type > 1) {
+        const pad = tileSize * 0.18;
+        const colors = artPalette(type);
+        const stripeW = (tileSize - pad * 2) / colors.length;
+        for (let i = 0; i < colors.length; i += 1) {
+          ctx.fillStyle = colors[i];
+          ctx.fillRect(sx + pad + stripeW * i, sy + pad, stripeW, tileSize - pad * 2);
+        }
+        ctx.strokeStyle = "#8f6734";
+        ctx.lineWidth = Math.max(1, tileSize * 0.04);
+        ctx.strokeRect(sx + pad, sy + pad, tileSize - pad * 2, tileSize - pad * 2);
+      }
+    }
+  }
+}
+
+function drawPlayer(tileSize) {
+  const px = canvas.width / 2;
+  const py = canvas.height / 2;
+  const radiusPx = Math.max(8, tileSize * PLAYER_RADIUS);
+
+  ctx.fillStyle = "#ff7f50";
+  ctx.beginPath();
+  ctx.arc(px, py, radiusPx, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = "#173a59";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(px, py);
+  ctx.lineTo(px + Math.cos(player.lookAngle) * radiusPx * 1.8, py + Math.sin(player.lookAngle) * radiusPx * 1.8);
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(72, 133, 183, 0.2)";
+  ctx.beginPath();
+  ctx.moveTo(px, py);
+  ctx.arc(px, py, radiusPx * 5.4, player.lookAngle - 0.5, player.lookAngle + 0.5);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawRoomLabels(tileSize) {
+  ctx.fillStyle = "#2d5776";
+  ctx.font = `${Math.max(14, Math.floor(tileSize * 0.34))}px Trebuchet MS`;
+  ctx.textAlign = "center";
+  for (let roomIndex = 0; roomIndex < ROOM_COUNT; roomIndex += 1) {
+    const centerY = roomIndex * ROOM_DEPTH + ROOM_DEPTH / 2;
+    const p = worldToScreen(WORLD_W / 2, centerY, tileSize);
+    if (p.y > -40 && p.y < canvas.height + 40) {
+      ctx.fillText(`Room ${roomIndex + 1}`, p.x, p.y);
+    }
   }
 }
 
 function update(dt) {
   if (input.ArrowLeft) {
-    player.dir -= TURN_SPEED * dt;
+    player.lookAngle -= TURN_SPEED * dt;
   }
   if (input.ArrowRight) {
-    player.dir += TURN_SPEED * dt;
+    player.lookAngle += TURN_SPEED * dt;
   }
   if (input.ArrowUp) {
-    player.look -= LOOK_SPEED * dt;
+    zoom += ZOOM_SPEED * dt;
   }
   if (input.ArrowDown) {
-    player.look += LOOK_SPEED * dt;
+    zoom -= ZOOM_SPEED * dt;
   }
 
-  player.look = Math.max(-canvas.height * 0.22, Math.min(canvas.height * 0.22, player.look));
+  zoom = Math.max(0.75, Math.min(1.8, zoom));
 
-  const moveX = Math.cos(player.dir);
-  const moveY = Math.sin(player.dir);
-  const strafeX = Math.cos(player.dir + Math.PI / 2);
-  const strafeY = Math.sin(player.dir + Math.PI / 2);
+  const forwardX = Math.cos(player.lookAngle);
+  const forwardY = Math.sin(player.lookAngle);
+  const rightX = Math.cos(player.lookAngle + Math.PI / 2);
+  const rightY = Math.sin(player.lookAngle + Math.PI / 2);
 
-  let nextX = player.x;
-  let nextY = player.y;
+  let vx = 0;
+  let vy = 0;
 
   if (input.KeyW) {
-    nextX += moveX * MOVE_SPEED * dt;
-    nextY += moveY * MOVE_SPEED * dt;
+    vx += forwardX;
+    vy += forwardY;
   }
   if (input.KeyS) {
-    nextX -= moveX * MOVE_SPEED * dt;
-    nextY -= moveY * MOVE_SPEED * dt;
+    vx -= forwardX;
+    vy -= forwardY;
   }
   if (input.KeyA) {
-    nextX -= strafeX * MOVE_SPEED * dt;
-    nextY -= strafeY * MOVE_SPEED * dt;
+    vx -= rightX;
+    vy -= rightY;
   }
   if (input.KeyD) {
-    nextX += strafeX * MOVE_SPEED * dt;
-    nextY += strafeY * MOVE_SPEED * dt;
+    vx += rightX;
+    vy += rightY;
   }
 
-  const pad = 0.22;
-  if (!isWall(nextX + Math.sign(nextX - player.x) * pad, player.y)) {
-    player.x = nextX;
-  }
-  if (!isWall(player.x, nextY + Math.sign(nextY - player.y) * pad)) {
-    player.y = nextY;
-  }
+  if (vx !== 0 || vy !== 0) {
+    const len = Math.hypot(vx, vy);
+    const stepX = (vx / len) * MOVE_SPEED * dt;
+    const stepY = (vy / len) * MOVE_SPEED * dt;
 
-  player.x = Math.max(1.2, Math.min(WORLD_W - 1.2, player.x));
-  player.y = Math.max(1.2, Math.min(WORLD_H - 1.2, player.y));
+    if (canStand(player.x + stepX, player.y)) {
+      player.x += stepX;
+    }
+    if (canStand(player.x, player.y + stepY)) {
+      player.y += stepY;
+    }
+  }
 }
 
 function render() {
-  const horizon = Math.floor(canvas.height * 0.46 + player.look);
-  drawBackground(horizon);
-
-  for (let x = 0; x < canvas.width; x += 1) {
-    const cameraX = (2 * x) / canvas.width - 1;
-    const rayAngle = player.dir + cameraX * (FOV / 2) * 1.9;
-    const ray = castRay(rayAngle);
-    const correctedDist = ray.distance * Math.cos(rayAngle - player.dir);
-
-    const wallHeight = Math.floor(canvas.height / Math.max(0.001, correctedDist));
-    const startY = Math.floor(horizon - wallHeight / 2);
-    const endY = Math.floor(horizon + wallHeight / 2);
-
-    drawSlice(x, startY, endY, ray);
-  }
-
-  ctx.fillStyle = "rgba(26, 54, 87, 0.55)";
-  ctx.fillRect(canvas.width / 2 - 1, canvas.height / 2 - 8, 2, 16);
-  ctx.fillRect(canvas.width / 2 - 8, canvas.height / 2 - 1, 16, 2);
+  const tileSize = Math.max(20, Math.min(120, 78 * zoom));
+  drawFloor(tileSize);
+  drawWorld(tileSize);
+  drawRoomLabels(tileSize);
+  drawPlayer(tileSize);
 }
 
 window.addEventListener("keydown", (event) => {
