@@ -1,277 +1,57 @@
 const canvas = document.getElementById("scene");
+const ctx = canvas.getContext("2d", { alpha: false });
 
-const renderer = new THREE.WebGLRenderer({
-  canvas,
-  antialias: true,
-});
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const WORLD_W = 14;
+const WORLD_H = 40;
+const ROOM_DEPTH = 10;
+const ROOM_COUNT = 4;
+const DOOR_START = 5;
+const DOOR_END = 8;
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color("#dff3ff");
-scene.fog = new THREE.Fog("#dff3ff", 9, 28);
+const world = Array.from({ length: WORLD_H }, () => Array(WORLD_W).fill(0));
 
-const camera = new THREE.PerspectiveCamera(
-  75,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  100,
-);
-camera.position.set(0, 1.7, 42);
-
-const galleryWidth = 15;
-const galleryDepth = 24;
-const wallHeight = 4.8;
-const roomCount = 4;
-const totalDepth = galleryDepth * roomCount;
-
-const room = new THREE.Group();
-scene.add(room);
-
-const floor = new THREE.Mesh(
-  new THREE.PlaneGeometry(galleryWidth, totalDepth, 16, 40),
-  new THREE.MeshStandardMaterial({ color: "#fef6dd", roughness: 0.9, metalness: 0 }),
-);
-floor.rotation.x = -Math.PI / 2;
-floor.receiveShadow = true;
-room.add(floor);
-
-const ceiling = new THREE.Mesh(
-  new THREE.PlaneGeometry(galleryWidth, totalDepth),
-  new THREE.MeshStandardMaterial({ color: "#fffaf0", roughness: 0.9 }),
-);
-ceiling.rotation.x = Math.PI / 2;
-ceiling.position.y = wallHeight;
-room.add(ceiling);
-
-function createWall(width, height, x, y, z, ry = 0) {
-  const wall = new THREE.Mesh(
-    new THREE.PlaneGeometry(width, height),
-    new THREE.MeshStandardMaterial({ color: "#f5fcff", roughness: 0.95 }),
-  );
-  wall.position.set(x, y, z);
-  wall.rotation.y = ry;
-  wall.receiveShadow = true;
-  room.add(wall);
-}
-
-createWall(galleryWidth, wallHeight, 0, wallHeight / 2, -totalDepth / 2);
-createWall(galleryWidth, wallHeight, 0, wallHeight / 2, totalDepth / 2, Math.PI);
-createWall(totalDepth, wallHeight, -galleryWidth / 2, wallHeight / 2, 0, Math.PI / 2);
-createWall(totalDepth, wallHeight, galleryWidth / 2, wallHeight / 2, 0, -Math.PI / 2);
-
-const doorwayWidth = 3.8;
-const halfSegment = (galleryWidth - doorwayWidth) / 4;
-for (let i = 1; i < roomCount; i += 1) {
-  const dividerZ = totalDepth / 2 - galleryDepth * i;
-  createWall((galleryWidth - doorwayWidth) / 2, wallHeight, -halfSegment - doorwayWidth / 2, wallHeight / 2, dividerZ);
-  createWall((galleryWidth - doorwayWidth) / 2, wallHeight, halfSegment + doorwayWidth / 2, wallHeight / 2, dividerZ);
-}
-
-const hemi = new THREE.HemisphereLight("#fff2bf", "#aed2ee", 0.74);
-scene.add(hemi);
-
-const key = new THREE.DirectionalLight("#fff6db", 0.8);
-key.position.set(2, 7, 3);
-key.castShadow = true;
-key.shadow.mapSize.set(2048, 2048);
-key.shadow.camera.left = -14;
-key.shadow.camera.right = 14;
-key.shadow.camera.top = 60;
-key.shadow.camera.bottom = -60;
-scene.add(key);
-
-for (let i = 0; i < roomCount; i += 1) {
-  const roomCenterZ = totalDepth / 2 - galleryDepth * i - galleryDepth / 2;
-  const spot = new THREE.SpotLight("#fff6de", 0.9, 30, Math.PI * 0.27, 0.55, 1.1);
-  spot.position.set(0, wallHeight - 0.2, roomCenterZ);
-  spot.target.position.set(0, 0, roomCenterZ);
-  spot.castShadow = i === 0;
-  scene.add(spot);
-  scene.add(spot.target);
-}
-
-function paintSky(ctx, w, h) {
-  const g = ctx.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0, "#8fd2ff");
-  g.addColorStop(1, "#e6f8ff");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, w, h);
-
-  ctx.fillStyle = "#ffdf5e";
-  ctx.beginPath();
-  ctx.arc(110, 95, 42, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = "#ffffff";
-  for (let i = 0; i < 7; i += 1) {
-    const x = 85 + i * 95;
-    const y = 45 + (i % 3) * 16;
-    ctx.beginPath();
-    ctx.arc(x, y, 19, 0, Math.PI * 2);
-    ctx.arc(x + 26, y + 4, 23, 0, Math.PI * 2);
-    ctx.arc(x + 52, y, 17, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  ctx.fillStyle = "#74be56";
-  ctx.fillRect(0, h - 84, w, 84);
-}
-
-function paintRainbow(ctx, w, h) {
-  paintSky(ctx, w, h);
-  const colors = ["#ff5b63", "#ffae45", "#ffe66e", "#52d68d", "#50b7ff", "#7a87ff"];
-  ctx.lineWidth = 20;
-  colors.forEach((c, i) => {
-    ctx.strokeStyle = c;
-    ctx.beginPath();
-    ctx.arc(w / 2, h + 42, 200 - i * 22, Math.PI, Math.PI * 2);
-    ctx.stroke();
-  });
-}
-
-function paintBalloons(ctx, w, h) {
-  paintSky(ctx, w, h);
-  const balloons = [
-    { x: 150, y: 170, c: "#ff6f91" },
-    { x: 245, y: 130, c: "#8c7dff" },
-    { x: 340, y: 175, c: "#56d0ff" },
-    { x: 435, y: 140, c: "#ffb35c" },
-  ];
-
-  balloons.forEach((b) => {
-    ctx.fillStyle = b.c;
-    ctx.beginPath();
-    ctx.ellipse(b.x, b.y, 36, 46, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = "#5c6778";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(b.x, b.y + 43);
-    ctx.bezierCurveTo(b.x - 9, b.y + 70, b.x + 11, b.y + 95, b.x - 5, b.y + 118);
-    ctx.stroke();
-  });
-
-  ctx.fillStyle = "#f2a23d";
-  for (let i = 0; i < 6; i += 1) {
-    const bx = 70 + i * 100;
-    ctx.fillRect(bx, h - 95 - (i % 2) * 10, 28, 30 + (i % 3) * 11);
-    ctx.beginPath();
-    ctx.moveTo(bx + 14, h - 95 - (i % 2) * 10);
-    ctx.lineTo(bx + 7, h - 112 - (i % 2) * 10);
-    ctx.lineTo(bx + 21, h - 112 - (i % 2) * 10);
-    ctx.closePath();
-    ctx.fill();
+function putWall(x, y, type = 1) {
+  if (x >= 0 && x < WORLD_W && y >= 0 && y < WORLD_H) {
+    world[y][x] = type;
   }
 }
 
-function paintFriendlyShapes(ctx, w, h) {
-  const g = ctx.createLinearGradient(0, 0, w, h);
-  g.addColorStop(0, "#fff7c2");
-  g.addColorStop(1, "#e7f7ff");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, w, h);
-
-  for (let i = 0; i < 18; i += 1) {
-    const x = 60 + (i % 6) * 90;
-    const y = 75 + Math.floor(i / 6) * 125;
-    const r = 24 + (i % 3) * 8;
-
-    ctx.fillStyle = ["#ff8a80", "#ffd166", "#5cd5b0", "#67c9ff", "#9b8bff"][i % 5];
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = "#1f3752";
-    ctx.beginPath();
-    ctx.arc(x - 8, y - 5, 2.5, 0, Math.PI * 2);
-    ctx.arc(x + 8, y - 5, 2.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = "#1f3752";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(x, y + 2, 10, 0.15 * Math.PI, 0.85 * Math.PI);
-    ctx.stroke();
+for (let y = 0; y < WORLD_H; y += 1) {
+  for (let x = 0; x < WORLD_W; x += 1) {
+    if (x === 0 || x === WORLD_W - 1 || y === 0 || y === WORLD_H - 1) {
+      putWall(x, y, 1);
+    }
   }
 }
 
-function createArtTexture(painter) {
-  const c = document.createElement("canvas");
-  c.width = 640;
-  c.height = 420;
-  const ctx = c.getContext("2d");
-  painter(ctx, c.width, c.height);
-  const texture = new THREE.CanvasTexture(c);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
-}
-
-function addPainting(texture, x, y, z, ry, width = 2.6, height = 1.8) {
-  const frame = new THREE.Mesh(
-    new THREE.BoxGeometry(width + 0.2, height + 0.2, 0.13),
-    new THREE.MeshStandardMaterial({ color: "#9e6b32", roughness: 0.6 }),
-  );
-  frame.position.set(x, y, z);
-  frame.rotation.y = ry;
-  frame.castShadow = true;
-  room.add(frame);
-
-  const art = new THREE.Mesh(
-    new THREE.PlaneGeometry(width, height),
-    new THREE.MeshStandardMaterial({ map: texture, roughness: 0.7 }),
-  );
-  art.position.set(x, y, z + (ry === 0 ? 0.071 : ry === Math.PI ? -0.071 : 0));
-
-  if (Math.abs(ry - Math.PI / 2) < 0.001) {
-    art.position.x = x + 0.071;
-  } else if (Math.abs(ry + Math.PI / 2) < 0.001) {
-    art.position.x = x - 0.071;
-  }
-
-  art.rotation.y = ry;
-  room.add(art);
-}
-
-const painters = [paintRainbow, paintBalloons, paintFriendlyShapes];
-const frontBackX = [-4.4, 0, 4.4];
-
-for (let i = 0; i < roomCount; i += 1) {
-  const roomCenterZ = totalDepth / 2 - galleryDepth * i - galleryDepth / 2;
-  const northZ = roomCenterZ - galleryDepth / 2 + 0.07;
-  const southZ = roomCenterZ + galleryDepth / 2 - 0.07;
-
-  frontBackX.forEach((x, index) => {
-    addPainting(createArtTexture(painters[(i + index) % painters.length]), x, 2.2, northZ, 0);
-    addPainting(createArtTexture(painters[(i + index + 1) % painters.length]), x, 2.2, southZ, Math.PI);
-  });
-
-  addPainting(createArtTexture(painters[i % painters.length]), -galleryWidth / 2 + 0.07, 2.2, roomCenterZ - 4, Math.PI / 2, 2.1, 1.5);
-  addPainting(createArtTexture(painters[(i + 1) % painters.length]), -galleryWidth / 2 + 0.07, 2.2, roomCenterZ + 4, Math.PI / 2, 2.1, 1.5);
-  addPainting(createArtTexture(painters[(i + 2) % painters.length]), galleryWidth / 2 - 0.07, 2.2, roomCenterZ - 4, -Math.PI / 2, 2.1, 1.5);
-  addPainting(createArtTexture(painters[i % painters.length]), galleryWidth / 2 - 0.07, 2.2, roomCenterZ + 4, -Math.PI / 2, 2.1, 1.5);
-}
-
-const pillars = new THREE.Group();
-room.add(pillars);
-for (let r = 0; r < roomCount; r += 1) {
-  const roomCenterZ = totalDepth / 2 - galleryDepth * r - galleryDepth / 2;
-  for (let i = -1; i <= 1; i += 1) {
-    const pillar = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.18, 0.24, wallHeight, 18),
-      new THREE.MeshStandardMaterial({ color: "#f0f6fb", roughness: 0.85 }),
-    );
-    pillar.position.set(i * 3.5, wallHeight / 2, roomCenterZ);
-    pillar.castShadow = true;
-    pillar.receiveShadow = true;
-    pillars.add(pillar);
+for (let r = 1; r < ROOM_COUNT; r += 1) {
+  const wallY = r * ROOM_DEPTH;
+  for (let x = 1; x < WORLD_W - 1; x += 1) {
+    if (x < DOOR_START || x >= DOOR_END) {
+      putWall(x, wallY, 1);
+    }
   }
 }
 
-const moveState = {
+function placeArtOnVerticalWall(x, yStart, yEnd, startType) {
+  for (let y = yStart; y <= yEnd; y += 1) {
+    putWall(x, y, startType + (y % 3));
+  }
+}
+
+for (let r = 0; r < ROOM_COUNT; r += 1) {
+  const y0 = r * ROOM_DEPTH + 1;
+  const y1 = (r + 1) * ROOM_DEPTH - 1;
+  placeArtOnVerticalWall(0, y0, y1, 2);
+  placeArtOnVerticalWall(WORLD_W - 1, y0, y1, 2);
+}
+
+for (let x = 2; x < WORLD_W - 2; x += 2) {
+  putWall(x, 0, 2 + (x % 3));
+  putWall(x, WORLD_H - 1, 2 + ((x + 1) % 3));
+}
+
+const input = {
   KeyW: false,
   KeyA: false,
   KeyS: false,
@@ -282,75 +62,295 @@ const moveState = {
   ArrowDown: false,
 };
 
-let yaw = Math.PI;
-let pitch = 0;
-const moveSpeed = 4.8;
-const lookSpeed = 1.45;
+const player = {
+  x: 6.5,
+  y: WORLD_H - 3.5,
+  dir: -Math.PI / 2,
+  look: 0,
+};
 
-const minX = -galleryWidth / 2 + 0.8;
-const maxX = galleryWidth / 2 - 0.8;
-const minZ = -totalDepth / 2 + 0.8;
-const maxZ = totalDepth / 2 - 0.8;
+const MOVE_SPEED = 3.6;
+const TURN_SPEED = 1.8;
+const LOOK_SPEED = 380;
+const FOV = Math.PI / 3;
+const MAX_DIST = 30;
+
+function resize() {
+  const ratio = Math.min(window.devicePixelRatio || 1, 1.75);
+  canvas.width = Math.floor(window.innerWidth * ratio);
+  canvas.height = Math.floor(window.innerHeight * ratio);
+  canvas.style.width = `${window.innerWidth}px`;
+  canvas.style.height = `${window.innerHeight}px`;
+}
+
+function isWall(x, y) {
+  const cx = Math.floor(x);
+  const cy = Math.floor(y);
+  if (cy < 0 || cy >= WORLD_H || cx < 0 || cx >= WORLD_W) {
+    return true;
+  }
+  return world[cy][cx] !== 0;
+}
+
+function wallTypeAt(x, y) {
+  const cx = Math.floor(x);
+  const cy = Math.floor(y);
+  if (cy < 0 || cy >= WORLD_H || cx < 0 || cx >= WORLD_W) {
+    return 1;
+  }
+  return world[cy][cx] || 1;
+}
+
+function artColor(type, stripe) {
+  if (type === 2) {
+    const rainbow = ["#ff6464", "#ffaa4f", "#ffe873", "#6ddf92", "#61c9ff", "#8f92ff"];
+    return rainbow[stripe % rainbow.length];
+  }
+  if (type === 3) {
+    return stripe % 2 === 0 ? "#ff8fc7" : "#84d7ff";
+  }
+  if (type === 4) {
+    return stripe % 3 === 0 ? "#ffd86d" : "#86f1b6";
+  }
+  return "#f4f9ff";
+}
+
+function drawBackground(horizon) {
+  const sky = ctx.createLinearGradient(0, 0, 0, horizon);
+  sky.addColorStop(0, "#95d9ff");
+  sky.addColorStop(1, "#e8f9ff");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, canvas.width, horizon);
+
+  const floor = ctx.createLinearGradient(0, horizon, 0, canvas.height);
+  floor.addColorStop(0, "#f5e9c6");
+  floor.addColorStop(1, "#dcbf88");
+  ctx.fillStyle = floor;
+  ctx.fillRect(0, horizon, canvas.width, canvas.height - horizon);
+
+  for (let y = Math.max(horizon, 0); y < canvas.height; y += 3) {
+    const t = (y - horizon) / Math.max(1, canvas.height - horizon);
+    const depthShade = 1 - Math.min(0.58, t * 0.75);
+    const c = Math.floor(229 * depthShade);
+    ctx.strokeStyle = `rgb(${c}, ${Math.floor(c * 0.93)}, ${Math.floor(c * 0.75)})`;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(canvas.width, y);
+    ctx.stroke();
+  }
+}
+
+function castRay(rayAngle) {
+  const rayDirX = Math.cos(rayAngle);
+  const rayDirY = Math.sin(rayAngle);
+
+  let mapX = Math.floor(player.x);
+  let mapY = Math.floor(player.y);
+
+  const deltaDistX = Math.abs(1 / (rayDirX || 0.00001));
+  const deltaDistY = Math.abs(1 / (rayDirY || 0.00001));
+
+  let stepX = 0;
+  let stepY = 0;
+  let sideDistX = 0;
+  let sideDistY = 0;
+
+  if (rayDirX < 0) {
+    stepX = -1;
+    sideDistX = (player.x - mapX) * deltaDistX;
+  } else {
+    stepX = 1;
+    sideDistX = (mapX + 1 - player.x) * deltaDistX;
+  }
+
+  if (rayDirY < 0) {
+    stepY = -1;
+    sideDistY = (player.y - mapY) * deltaDistY;
+  } else {
+    stepY = 1;
+    sideDistY = (mapY + 1 - player.y) * deltaDistY;
+  }
+
+  let hit = false;
+  let side = 0;
+  let type = 1;
+
+  while (!hit) {
+    if (sideDistX < sideDistY) {
+      sideDistX += deltaDistX;
+      mapX += stepX;
+      side = 0;
+    } else {
+      sideDistY += deltaDistY;
+      mapY += stepY;
+      side = 1;
+    }
+
+    if (mapX < 0 || mapX >= WORLD_W || mapY < 0 || mapY >= WORLD_H) {
+      hit = true;
+      type = 1;
+    } else if (world[mapY][mapX] > 0) {
+      hit = true;
+      type = world[mapY][mapX];
+    }
+  }
+
+  const perpDist = side === 0
+    ? (mapX - player.x + (1 - stepX) / 2) / (rayDirX || 0.00001)
+    : (mapY - player.y + (1 - stepY) / 2) / (rayDirY || 0.00001);
+
+  const hitPoint = side === 0
+    ? player.y + perpDist * rayDirY
+    : player.x + perpDist * rayDirX;
+
+  const wallU = hitPoint - Math.floor(hitPoint);
+
+  return {
+    distance: Math.max(0.0001, perpDist),
+    side,
+    type,
+    wallU,
+  };
+}
+
+function drawSlice(x, startY, endY, ray) {
+  const sliceH = endY - startY + 1;
+  const clampedStart = Math.max(0, startY);
+  const clampedEnd = Math.min(canvas.height - 1, endY);
+  if (clampedEnd <= clampedStart) {
+    return;
+  }
+
+  const distFade = Math.max(0.2, 1 - ray.distance / MAX_DIST);
+  for (let y = clampedStart; y <= clampedEnd; y += 1) {
+    const yT = (y - startY) / Math.max(1, sliceH);
+    const stripe = Math.floor(ray.wallU * 8 + yT * 7);
+    let base = artColor(ray.type, stripe);
+
+    if (ray.type === 1) {
+      base = stripe % 2 === 0 ? "#f8fbff" : "#e7f1fa";
+    }
+
+    const shade = ray.side === 1 ? 0.86 : 1;
+    const finalShade = shade * distFade;
+
+    const rgb = base.match(/[\da-f]{2}/gi);
+    const r = parseInt(rgb[0], 16);
+    const g = parseInt(rgb[1], 16);
+    const b = parseInt(rgb[2], 16);
+    ctx.fillStyle = `rgb(${Math.floor(r * finalShade)}, ${Math.floor(g * finalShade)}, ${Math.floor(b * finalShade)})`;
+    ctx.fillRect(x, y, 1, 1);
+  }
+
+  if (ray.type > 1) {
+    const frameTop = clampedStart + Math.floor((clampedEnd - clampedStart) * 0.13);
+    const frameBottom = clampedStart + Math.floor((clampedEnd - clampedStart) * 0.87);
+    ctx.fillStyle = "#8f6734";
+    ctx.fillRect(x, frameTop, 1, 2);
+    ctx.fillRect(x, frameBottom - 2, 1, 2);
+  }
+}
+
+function update(dt) {
+  if (input.ArrowLeft) {
+    player.dir -= TURN_SPEED * dt;
+  }
+  if (input.ArrowRight) {
+    player.dir += TURN_SPEED * dt;
+  }
+  if (input.ArrowUp) {
+    player.look -= LOOK_SPEED * dt;
+  }
+  if (input.ArrowDown) {
+    player.look += LOOK_SPEED * dt;
+  }
+
+  player.look = Math.max(-canvas.height * 0.22, Math.min(canvas.height * 0.22, player.look));
+
+  const moveX = Math.cos(player.dir);
+  const moveY = Math.sin(player.dir);
+  const strafeX = Math.cos(player.dir + Math.PI / 2);
+  const strafeY = Math.sin(player.dir + Math.PI / 2);
+
+  let nextX = player.x;
+  let nextY = player.y;
+
+  if (input.KeyW) {
+    nextX += moveX * MOVE_SPEED * dt;
+    nextY += moveY * MOVE_SPEED * dt;
+  }
+  if (input.KeyS) {
+    nextX -= moveX * MOVE_SPEED * dt;
+    nextY -= moveY * MOVE_SPEED * dt;
+  }
+  if (input.KeyA) {
+    nextX -= strafeX * MOVE_SPEED * dt;
+    nextY -= strafeY * MOVE_SPEED * dt;
+  }
+  if (input.KeyD) {
+    nextX += strafeX * MOVE_SPEED * dt;
+    nextY += strafeY * MOVE_SPEED * dt;
+  }
+
+  const pad = 0.22;
+  if (!isWall(nextX + Math.sign(nextX - player.x) * pad, player.y)) {
+    player.x = nextX;
+  }
+  if (!isWall(player.x, nextY + Math.sign(nextY - player.y) * pad)) {
+    player.y = nextY;
+  }
+
+  player.x = Math.max(1.2, Math.min(WORLD_W - 1.2, player.x));
+  player.y = Math.max(1.2, Math.min(WORLD_H - 1.2, player.y));
+}
+
+function render() {
+  const horizon = Math.floor(canvas.height * 0.46 + player.look);
+  drawBackground(horizon);
+
+  for (let x = 0; x < canvas.width; x += 1) {
+    const cameraX = (2 * x) / canvas.width - 1;
+    const rayAngle = player.dir + cameraX * (FOV / 2) * 1.9;
+    const ray = castRay(rayAngle);
+    const correctedDist = ray.distance * Math.cos(rayAngle - player.dir);
+
+    const wallHeight = Math.floor(canvas.height / Math.max(0.001, correctedDist));
+    const startY = Math.floor(horizon - wallHeight / 2);
+    const endY = Math.floor(horizon + wallHeight / 2);
+
+    drawSlice(x, startY, endY, ray);
+  }
+
+  ctx.fillStyle = "rgba(26, 54, 87, 0.55)";
+  ctx.fillRect(canvas.width / 2 - 1, canvas.height / 2 - 8, 2, 16);
+  ctx.fillRect(canvas.width / 2 - 8, canvas.height / 2 - 1, 16, 2);
+}
 
 window.addEventListener("keydown", (event) => {
-  if (event.code in moveState) {
-    moveState[event.code] = true;
+  if (event.code in input) {
+    input[event.code] = true;
     event.preventDefault();
   }
 });
 
 window.addEventListener("keyup", (event) => {
-  if (event.code in moveState) {
-    moveState[event.code] = false;
+  if (event.code in input) {
+    input[event.code] = false;
     event.preventDefault();
   }
 });
 
-window.addEventListener("resize", () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
+window.addEventListener("resize", resize);
 
-const clock = new THREE.Clock();
+resize();
 
-function updateControls(dt) {
-  if (moveState.ArrowLeft) yaw += lookSpeed * dt;
-  if (moveState.ArrowRight) yaw -= lookSpeed * dt;
-  if (moveState.ArrowUp) pitch += lookSpeed * dt;
-  if (moveState.ArrowDown) pitch -= lookSpeed * dt;
-
-  pitch = Math.max(-1.15, Math.min(1.15, pitch));
-
-  const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
-  const right = new THREE.Vector3(forward.z, 0, -forward.x);
-  const velocity = new THREE.Vector3();
-
-  if (moveState.KeyW) velocity.add(forward);
-  if (moveState.KeyS) velocity.sub(forward);
-  if (moveState.KeyA) velocity.sub(right);
-  if (moveState.KeyD) velocity.add(right);
-
-  if (velocity.lengthSq() > 0) {
-    velocity.normalize().multiplyScalar(moveSpeed * dt);
-    camera.position.add(velocity);
-    camera.position.x = Math.max(minX, Math.min(maxX, camera.position.x));
-    camera.position.z = Math.max(minZ, Math.min(maxZ, camera.position.z));
-  }
-
-  const lookDir = new THREE.Vector3(
-    Math.sin(yaw) * Math.cos(pitch),
-    Math.sin(pitch),
-    Math.cos(yaw) * Math.cos(pitch),
-  );
-  camera.lookAt(camera.position.clone().add(lookDir));
+let last = performance.now();
+function tick(now) {
+  const dt = Math.min(0.033, (now - last) / 1000);
+  last = now;
+  update(dt);
+  render();
+  requestAnimationFrame(tick);
 }
 
-function animate() {
-  const dt = Math.min(0.033, clock.getDelta());
-  updateControls(dt);
-  renderer.render(scene, camera);
-  requestAnimationFrame(animate);
-}
-
-animate();
+requestAnimationFrame(tick);
