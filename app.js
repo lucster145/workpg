@@ -186,25 +186,6 @@ class InteractiveCharacter {
   }
 }
 
-// Initialize AI Characters - spread throughout rooms
-const aiCharacters = [];
-for (let i = 0; i < 30; i++) {
-  const roomIndex = Math.floor(Math.random() * ROOM_COUNT);
-  const roomCenterY = roomIndex * ROOM_DEPTH + ROOM_DEPTH / 2;
-  const x = 2 + Math.random() * (WORLD_W - 4);
-  const y = roomCenterY + (Math.random() - 0.5) * 4;
-  if (canStand(x, y)) {
-    aiCharacters.push(new AICharacter(x, y));
-  }
-}
-
-// Initialize Interactive Characters
-const interactiveCharacters = [
-  new InteractiveCharacter(6.5, ROOM_DEPTH * 1 + 5, "Alice", "Welcome to the gallery! Explore all the rooms!"),
-  new InteractiveCharacter(6.5, ROOM_DEPTH * 30 + 5, "Bob", "Did you know there are 100 rooms to explore?"),
-  new InteractiveCharacter(6.5, ROOM_DEPTH * 60 + 5, "Charlie", "Keep walking to discover more amazing art!"),
-];
-
 let selectedCharacter = null;
 let interactionText = "";
 
@@ -240,6 +221,25 @@ function canStand(x, y) {
 
   return points.every(([px, py]) => !isBlocked(px, py));
 }
+
+// Initialize AI Characters - spread throughout rooms
+const aiCharacters = [];
+for (let i = 0; i < 30; i++) {
+  const roomIndex = Math.floor(Math.random() * ROOM_COUNT);
+  const roomCenterY = roomIndex * ROOM_DEPTH + ROOM_DEPTH / 2;
+  const x = 2 + Math.random() * (WORLD_W - 4);
+  const y = roomCenterY + (Math.random() - 0.5) * 4;
+  if (canStand(x, y)) {
+    aiCharacters.push(new AICharacter(x, y));
+  }
+}
+
+// Initialize Interactive Characters
+const interactiveCharacters = [
+  new InteractiveCharacter(6.5, ROOM_DEPTH * 1 + 5, "Alice", "Welcome to the gallery! Explore all the rooms!"),
+  new InteractiveCharacter(6.5, ROOM_DEPTH * 30 + 5, "Bob", "Did you know there are 100 rooms to explore?"),
+  new InteractiveCharacter(6.5, ROOM_DEPTH * 60 + 5, "Charlie", "Keep walking to discover more amazing art!"),
+];
 
 function seeded(seed) {
   const s = Math.sin(seed * 127.1) * 43758.5453123;
