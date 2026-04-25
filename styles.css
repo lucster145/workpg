@@ -53,6 +53,7 @@ body {
 #hud .hint {
   margin-top: 0.35rem;
   color: #2c5574;
+  font-size: clamp(0.8rem, 1.7vw, 0.95rem);
 }
 
 #hud strong {

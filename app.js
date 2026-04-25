@@ -25,9 +25,9 @@ window.addEventListener("error", (event) => {
 });
 
 const WORLD_W = 14;
-const WORLD_H = 40;
+const WORLD_H = 1000;
 const ROOM_DEPTH = 10;
-const ROOM_COUNT = 4;
+const ROOM_COUNT = 100;
 const DOOR_START = 5;
 const DOOR_END = 8;
 
@@ -83,6 +83,130 @@ const player = {
   y: WORLD_H - 3.3,
   lookAngle: -Math.PI / 2,
 };
+
+// AI Characters
+class AICharacter {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.angle = Math.random() * Math.PI * 2;
+    this.speed = 1.0 + Math.random() * 0.5;
+    this.walkTimer = Math.random() * 3;
+    this.directionChangeInterval = 2 + Math.random() * 3;
+    this.color = `hsl(${Math.random() * 360}, 70%, 50%)`;
+    this.id = Math.random();
+  }
+
+  update(dt) {
+    this.walkTimer -= dt;
+    if (this.walkTimer <= 0) {
+      this.angle = Math.random() * Math.PI * 2;
+      this.directionChangeInterval = 2 + Math.random() * 3;
+      this.walkTimer = this.directionChangeInterval;
+    }
+
+    const newX = this.x + Math.cos(this.angle) * this.speed * dt;
+    const newY = this.y + Math.sin(this.angle) * this.speed * dt;
+
+    if (canStand(newX, newY)) {
+      this.x = newX;
+      this.y = newY;
+    } else {
+      this.angle = Math.random() * Math.PI * 2;
+      this.walkTimer = 0;
+    }
+  }
+
+  draw(tileSize) {
+    const screen = worldToScreen(this.x, this.y, tileSize);
+    const radiusPx = Math.max(6, tileSize * 0.15);
+
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(screen.x, screen.y, radiusPx, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "#173a59";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.strokeStyle = this.color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(screen.x, screen.y);
+    ctx.lineTo(screen.x + Math.cos(this.angle) * radiusPx * 1.5, screen.y + Math.sin(this.angle) * radiusPx * 1.5);
+    ctx.stroke();
+  }
+}
+
+// Interactive Characters
+class InteractiveCharacter {
+  constructor(x, y, name, message) {
+    this.x = x;
+    this.y = y;
+    this.name = name;
+    this.message = message;
+    this.color = `hsl(${Math.random() * 360}, 85%, 45%)`;
+  }
+
+  draw(tileSize) {
+    const screen = worldToScreen(this.x, this.y, tileSize);
+    const radiusPx = Math.max(8, tileSize * 0.2);
+
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(screen.x, screen.y, radiusPx, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(screen.x - radiusPx * 0.3, screen.y - radiusPx * 0.2, radiusPx * 0.25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(screen.x + radiusPx * 0.3, screen.y - radiusPx * 0.2, radiusPx * 0.25, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#000";
+    ctx.beginPath();
+    ctx.arc(screen.x - radiusPx * 0.3, screen.y - radiusPx * 0.2, radiusPx * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(screen.x + radiusPx * 0.3, screen.y - radiusPx * 0.2, radiusPx * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "#173a59";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(screen.x, screen.y, radiusPx, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  getDistance(px, py) {
+    return Math.hypot(this.x - px, this.y - py);
+  }
+}
+
+// Initialize AI Characters - spread throughout rooms
+const aiCharacters = [];
+for (let i = 0; i < 30; i++) {
+  const roomIndex = Math.floor(Math.random() * ROOM_COUNT);
+  const roomCenterY = roomIndex * ROOM_DEPTH + ROOM_DEPTH / 2;
+  const x = 2 + Math.random() * (WORLD_W - 4);
+  const y = roomCenterY + (Math.random() - 0.5) * 4;
+  if (canStand(x, y)) {
+    aiCharacters.push(new AICharacter(x, y));
+  }
+}
+
+// Initialize Interactive Characters
+const interactiveCharacters = [
+  new InteractiveCharacter(6.5, ROOM_DEPTH * 1 + 5, "Alice", "Welcome to the gallery! Explore all the rooms!"),
+  new InteractiveCharacter(6.5, ROOM_DEPTH * 30 + 5, "Bob", "Did you know there are 100 rooms to explore?"),
+  new InteractiveCharacter(6.5, ROOM_DEPTH * 60 + 5, "Charlie", "Keep walking to discover more amazing art!"),
+];
+
+let selectedCharacter = null;
+let interactionText = "";
 
 const MOVE_SPEED = 3.5;
 const TURN_SPEED = 2.2;
@@ -232,11 +356,28 @@ function drawFloor(tileSize) {
   const startY = Math.floor(player.y - canvas.height / tileSize / 2) - 1;
   const endY = Math.ceil(player.y + canvas.height / tileSize / 2) + 1;
 
+  // Draw carpet
   for (let y = startY; y <= endY; y += 1) {
     for (let x = startX; x <= endX; x += 1) {
       const { x: sx, y: sy } = worldToScreen(x, y, tileSize);
-      ctx.fillStyle = (x + y) % 2 === 0 ? "#f8efd1" : "#f5e7c0";
-      ctx.fillRect(sx, sy, tileSize + 1, tileSize + 1);
+      
+      // Carpet pattern - alternating style
+      const roomIndex = Math.floor(y / ROOM_DEPTH);
+      const carpetPattern = (x + roomIndex) % 2 === 0;
+      
+      if (carpetPattern) {
+        ctx.fillStyle = "#d4a574"; // Brown carpet
+        ctx.fillRect(sx, sy, tileSize + 1, tileSize + 1);
+        
+        // Add carpet texture
+        ctx.fillStyle = "rgba(139, 90, 43, 0.1)";
+        for (let i = 0; i < 3; i++) {
+          ctx.fillRect(sx + 2 + i * 4, sy + 2, 2, tileSize - 4);
+        }
+      } else {
+        ctx.fillStyle = "#e8dcc4"; // Light beige carpet
+        ctx.fillRect(sx, sy, tileSize + 1, tileSize + 1);
+      }
     }
   }
 }
@@ -336,7 +477,28 @@ function update(dt) {
 
   if (vx !== 0 || vy !== 0) {
     const len = Math.hypot(vx, vy);
-    const stepX = (vx / len) * MOVE_SPEED * dt;
+  
+  // Draw interactive characters
+  for (const npc of interactiveCharacters) {
+    npc.draw(tileSize);
+  }
+  
+  // Draw AI characters
+  for (const ai of aiCharacters) {
+    ai.draw(tileSize);
+  }
+  
+  drawPlayer(tileSize);
+  
+  // Draw interaction text if nearby
+  if (interactionText) {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+    ctx.fillRect(10, canvas.height - 50, canvas.width - 20, 40);
+    ctx.fillStyle = "#fff";
+    ctx.font = `16px Trebuchet MS`;
+    ctx.textAlign = "left";
+    ctx.fillText(interactionText, 20, canvas.height - 20);
+  } len) * MOVE_SPEED * dt;
     const stepY = (vy / len) * MOVE_SPEED * dt;
 
     if (canStand(player.x + stepX, player.y)) {
